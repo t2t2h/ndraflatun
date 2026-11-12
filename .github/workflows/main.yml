@@ -1,0 +1,45 @@
+name: Build dylib
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:      # تشغيل يدوي من تبويب Actions
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install ldid make
+
+      - name: Install Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git $HOME/theos
+          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
+          echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Install iOS SDKs
+        run: |
+          git clone --depth=1 https://github.com/theos/sdks.git /tmp/sdks
+          mkdir -p $HOME/theos/sdks
+          cp -R /tmp/sdks/*.sdk $HOME/theos/sdks/
+
+      - name: Build
+        run: |
+          MK=$(find . -maxdepth 2 -name Makefile -not -path './.git/*' | head -1)
+          cd "$(dirname "$MK")"
+          make clean || true
+          make FINALPACKAGE=1 -j$(sysctl -n hw.ncpu)
+
+      - name: Collect dylib
+        run: |
+          mkdir -p out
+          find . -name "*.dylib" -path "*.theos/obj*" -exec cp {} out/ \;
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AflatoonSuite-dylib
+          path: out/*.dylib
